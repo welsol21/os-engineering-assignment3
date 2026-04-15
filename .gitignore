@@ -1,0 +1,36 @@
+# build artifacts
+*.o
+*.out
+*.a
+*.so
+*.d
+*.ko
+
+# executables
+server
+a.out
+
+# temp/editor files
+*~
+*.swp
+*.swo
+.DS_Store
+
+# logs
+*.log
+
+# q1 outputs
+q1-concurrent-web-server/output/*.tmp
+
+# q4/q5 generated eBPF/libbpf build outputs
+q4-ebpf-tcp-dump/src/*.o
+q4-ebpf-tcp-dump/src/*.skel.h
+q4-ebpf-tcp-dump/src/*.bpf.o
+q4-ebpf-tcp-dump/src/*.output
+q5-ebpf-xdp-load-balancer/src/*.o
+q5-ebpf-xdp-load-balancer/src/*.skel.h
+q5-ebpf-xdp-load-balancer/src/*.bpf.o
+q5-ebpf-xdp-load-balancer/src/*.output
+
+# generic
+tmp/
