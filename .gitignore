@@ -34,3 +34,5 @@ q5-ebpf-xdp-load-balancer/src/*.output
 
 # generic
 tmp/
+
+Plan.odt

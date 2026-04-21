@@ -33,11 +33,22 @@ size_t rio_writen(int fd, const char *usrbuf, size_t n)
     return n;
 }
 int parse_request(const char *req_str, request_t *req_info) {
-    if (sscanf(req_str, "%s %s %[^\r\n]", req_info->method, req_info->uri, req_info->version) != 3) {
+    if (sscanf(req_str, "%7s %511s %15[^\r\n]",
+               req_info->method,
+               req_info->uri,
+               req_info->version) != 3) {
         fprintf(stderr, "malformed http request\n");
         return -1;
     }
+
     printf("method %s uri %s\n",req_info->method, req_info->uri);
+
+    if (strcmp(req_info->method, "GET") != 0) {
+        fprintf(stderr, "unsupported method\n");
+        return -1;
+    }
+
+    return 0;
 }
 
 
@@ -183,53 +194,50 @@ int first=1;
 void *connection_handler(void *socket_desc)
 {
     //Get the socket descriptor
-    int sock = *(int*)socket_desc;
-    int sz;
-    char *message , data[2000];
-     
-    //Send some messages to the client
-    //message = "Greetings! I am your connection handler\n";
-    //write(sock , message , strlen(message));
-     
-    //message = "Now type something and i shall repeat what you type \n";
-    //write(sock , message , strlen(message));
+    int sock = *(int *)socket_desc;
+    free(socket_desc);
+    socket_desc = NULL;
+    int sz = -1;
+    char data[2001];
      
     //Receive a message from client
-    while( (sz = recv(sock , data , 2000 , 0)) > 0 )
+    while((sz = recv(sock, data, 2000, 0)) > 0)
     {
+        data[sz] = '\0';
 
-                //readn++;
-                if ( sz >= 4
-                && data[sz - 1] == '\n'
-                && data[sz - 2] == '\r'
-                && data[sz - 3] == '\n'
-                && data[sz - 4] == '\r' ){ 
+        //readn++;
+        if (sz >= 4
+            && data[sz - 1] == '\n'
+            && data[sz - 2] == '\r'
+            && data[sz - 3] == '\n'
+            && data[sz - 4] == '\r' ){ 
             
-        
-printf("client message %s \n",data);
-request_t req_info;
-        if (parse_request(data, &req_info) < 0) {
-            //error
-            send_response(sock, ISE, content_500, strlen(content_500));
+            printf("client message %s\n",data);
+            request_t req_info;
+            if (parse_request(data, &req_info) < 0) {
+                //error
+                send_response(sock, ISE, content_500, strlen(content_500));
+                break;
+            }
+
+            FILE *file = handle_request(&req_info);
+            if (file == NULL) {
+                send_response(sock, NF, content_404, strlen(content_404));
+                break;
+            }
+
+            send_file_response(sock, file);
             break;
         }
-        char * pp = "hello world";
-        send_response(sock, OK, pp, strlen(pp));
-    }
     }
      
-    if(sz == 0)
-    {
+    if(sz == 0){
         puts("Client disconnected");
         fflush(stdout);
-    }
-    else if(sz == -1)
-    {
+    } else if (sz == -1){
         perror("recv failed");
     }
          
-    //Free the socket pointer
-    free(socket_desc);
-     
-    return 0;
+    close(sock);     
+    return NULL;
 }
