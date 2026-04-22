@@ -51,7 +51,19 @@ int parse_request(const char *req_str, request_t *req_info) {
     return 0;
 }
 
+FILE *handle_request(const request_t *req)
+{
+    char path[1024];
 
+    if (strcmp(req->uri, "/") == 0) {
+        snprintf(path, sizeof(path), "www/index.html");
+    } else {
+        snprintf(path, sizeof(path), "www/%s", req->uri + 1);
+    }
+
+    printf("requested path: %s\n", path);
+    return fopen(path, "rb");
+}
 
 void send_response(int connfd, status_t status, 
                    const char *content, size_t content_length) {
