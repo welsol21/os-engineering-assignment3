@@ -105,28 +105,42 @@ void send_file_response(int connfd, FILE *file)
 
 
 
-void send_response(int connfd, status_t status, 
-                   const char *content, size_t content_length) {
-    char buf[128];
+void send_response(int connfd, status_t status,
+                   const char *content, size_t content_length)
+{
+    char buf[256];
+    int written;
 
     if (status == NF) {
-        sprintf(buf, "HTTP/1.0 404 Not Found\r\n");
+        written = snprintf(buf, sizeof(buf),
+                           "HTTP/1.0 404 Not Found\r\n"
+                           "Content-Length: %zu\r\n\r\n",
+                           content_length);
     } else if (status == OK) {
-        sprintf(buf, "HTTP/1.0 200 OK\r\n");
+        written = snprintf(buf, sizeof(buf),
+                           "HTTP/1.0 200 OK\r\n"
+                           "Content-Length: %zu\r\n\r\n",
+                           content_length);
     } else {
-        sprintf(buf, "HTTP/1.0 500 Internal Server Error\r\n");
+        written = snprintf(buf, sizeof(buf),
+                           "HTTP/1.0 500 Internal Server Error\r\n"
+                           "Content-Length: %zu\r\n\r\n",
+                           content_length);
     }
 
-    sprintf(buf, "%sContent-Length: %lu\r\n\r\n", buf, content_length);
-
-    size_t buf_len = strlen(buf);
-
-    if (rio_writen(connfd, buf, buf_len) < buf_len) {
-        fprintf(stderr, "error while sending response\n");
+    if (written < 0 || (size_t)written >= sizeof(buf)) {
+        fprintf(stderr, "error while building response header\n");
         return;
     }
-    if (rio_writen(connfd, content, content_length) < content_length) {
-        fprintf(stderr, "error while sending response\n");
+
+    if (rio_writen(connfd, buf, (size_t)written) < (size_t)written) {
+        fprintf(stderr, "error while sending response header\n");
+        return;
+    }
+
+    if (content_length > 0 &&
+        rio_writen(connfd, content, content_length) < content_length) {
+        fprintf(stderr, "error while sending response body\n");
     }
 }
 

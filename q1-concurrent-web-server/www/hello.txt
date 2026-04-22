@@ -1,0 +1,3 @@
+cat > www/hello.txt <<'EOF'
+Hello from the Q1 web server.
+EOF
