@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <signal.h>
-#include <unistd.h>
+#include <ctype.h>
 #include <bpf/libbpf.h>
 #include "tcpdump_portion.skel.h"
 
@@ -19,13 +19,46 @@ static void handle_sigint(int sig)
     exiting = 1;
 }
 
+// static void print_payload(const char *data, __u32 max_len)
+// {
+//     __u32 i;
+
+//     putchar('"');
+//     for (i = 0; i < max_len; i++) {
+//         unsigned char c = (unsigned char)data[i];
+//         if (c == '\0')
+//             break;
+
+//         if (isprint(c))
+//             putchar(c);
+//         else
+//             printf("\\x%02x", c);
+//     }
+//     putchar('"');
+// }
+
+static void print_payload_hex(const char *data, __u32 max_len)
+{
+    __u32 i;
+
+    for (i = 0; i < max_len; i++) {
+        printf("%02x ", (unsigned char)data[i]);
+    }
+}
+
 static int handle_event(void *ctx, void *data, size_t data_sz)
 {
     const struct event *e = data;
+    __u32 shown = e->len < sizeof(e->data) ? e->len : sizeof(e->data);
+
     (void)ctx;
     (void)data_sz;
 
-    printf("pid=%u comm=%s len=%u\n", e->pid, e->comm, e->len);
+    // printf("pid=%u comm=%s len=%u data=", e->pid, e->comm, e->len);
+    // print_payload(e->data, shown);
+    printf("pid=%u comm=%s len=%u data_hex=", e->pid, e->comm, e->len);
+    print_payload_hex(e->data, shown);
+    putchar('\n');
     return 0;
 }
 
@@ -58,7 +91,7 @@ int main(void)
         return 1;
     }
 
-    printf("Tracing tcp_recvmsg... Press Ctrl-C to stop.\n");
+    printf("Tracing recvfrom payload... Press Ctrl-C to stop.\n");
 
     while (!exiting) {
         err = ring_buffer__poll(rb, 100);
@@ -70,6 +103,5 @@ int main(void)
 
     ring_buffer__free(rb);
     tcpdump_portion_bpf__destroy(skel);
-
     return err < 0 ? 1 : 0;
 }
