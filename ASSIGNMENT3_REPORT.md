@@ -518,3 +518,289 @@ This Q4 implementation achieved the main practical goal:
 ### Limitation
 The implementation traces the user-space receive syscall path rather than attaching directly to `tcp_recvmsg` with a fully CO-RE-based design.
 However, it still satisfies the practical purpose of the question by dumping part of the received TCP data read by user space.
+
+## Question 5 - eBPF, XDP and a simple load balancer
+
+### Requirement
+Question 5 asks for:
+- an overview of eBPF and the eXpress Data Path (XDP) framework for networking in Linux,
+- a reference to Cilium,
+- a reference to the work completed in Question 4,
+- and an outline of how to implement a simple load balancer using eBPF and XDP.
+
+### What is eBPF?
+eBPF is a Linux kernel technology that allows small sandboxed programs to run inside the kernel at specific hook points.
+These programs are event-driven and run when a relevant event occurs, such as a system call, a function entry or exit, or a packet arriving in the networking path.
+
+The main idea is that Linux kernel behaviour can be extended safely without writing a traditional kernel module for every feature.
+This makes eBPF useful for:
+- observability,
+- tracing,
+- networking,
+- and security.
+
+In networking, eBPF is especially valuable because the code runs very close to the packet path, which enables fast filtering, policy decisions, classification, accounting and forwarding-related logic.
+
+### What is XDP?
+XDP stands for eXpress Data Path.
+It is a very early packet-processing hook in the Linux networking path.
+
+An XDP program runs immediately when a packet arrives at the network interface driver, before the normal Linux network stack performs most of its work.
+Because of this, XDP can process, pass or drop packets with very low overhead.
+
+This makes XDP suitable for:
+- very fast packet filtering,
+- DDoS mitigation,
+- early traffic classification,
+- and simple high-performance forwarding or load balancing logic.
+
+Typical XDP actions include:
+- `XDP_PASS`
+- `XDP_DROP`
+- `XDP_REDIRECT`
+- `XDP_TX`
+
+### Relationship between eBPF and XDP
+XDP is one specific place where an eBPF program can run.
+Therefore:
+- eBPF is the general programmable kernel mechanism,
+- XDP is one very early and high-performance networking hook for eBPF programs.
+
+So XDP is a specialized networking use of eBPF.
+
+### Reference to Cilium
+Cilium is one of the best-known production systems based on eBPF.
+It uses eBPF programs attached at multiple Linux networking hooks to implement higher-level networking functions such as:
+- service handling,
+- policy enforcement,
+- packet forwarding,
+- load balancing,
+- and observability.
+
+Cilium is important here because it shows that eBPF and XDP are not only theoretical concepts.
+They are used in real systems to build practical networking datapaths.
+
+### Reference to my work in Question 4
+In Question 4 I used eBPF for tracing and observability.
+The Q4 program attached to the receive path and dumped a prefix of the TCP payload read by user space.
+
+That demonstrated eBPF as a tracing and visibility tool.
+
+Question 5 uses the same general technology in a different role.
+Instead of observing packets, eBPF and XDP are now used to inspect packets in the datapath and make packet-processing decisions.
+
+So the relationship is:
+- Q4: eBPF for tracing and payload visibility,
+- Q5: eBPF and XDP for datapath logic and forwarding decisions.
+
+### Outline of a simple load balancer using eBPF and XDP
+A simple load balancer using eBPF and XDP can be designed in the following way.
+
+#### 1. Packet arrival
+A packet arrives at the NIC.
+
+Because an XDP program is attached to the interface, the XDP hook runs immediately when the packet is received, before most of the normal Linux network stack.
+
+#### 2. Parse packet headers
+The XDP program parses:
+- the Ethernet header,
+- the IPv4 header,
+- and then the TCP or UDP header.
+
+This gives the program access to:
+- source IP,
+- destination IP,
+- source port,
+- destination port,
+- and protocol.
+
+If the packet is malformed or not relevant, the program can simply return `XDP_PASS` or `XDP_DROP`.
+
+#### 3. Match the virtual service
+The program checks whether the packet is addressed to a configured virtual service.
+For example, a service might be represented by a frontend VIP and port.
+
+If the packet does not match the service, it is passed normally.
+If it does match, the load-balancing logic begins.
+
+#### 4. Select a backend
+The program chooses one backend from a pool of backends.
+
+A simple design could use:
+- a round-robin policy,
+- or a hash of the packet 5-tuple.
+
+The 5-tuple means:
+- source IP,
+- destination IP,
+- source port,
+- destination port,
+- transport protocol.
+
+The backend pool is naturally stored in an eBPF map.
+
+#### 5. Rewrite packet headers
+In a more complete implementation, after selecting a backend, the program would rewrite packet header fields so that traffic is directed to the chosen backend.
+This may include:
+- destination IP,
+- destination MAC,
+- and possibly transport-layer information.
+
+#### 6. Update checksums
+After modifying packet headers, the corresponding checksums must be updated.
+This is necessary so that the packet remains valid for the receiver.
+
+#### 7. Redirect or transmit
+Finally, the packet would be redirected or transmitted toward the selected backend.
+
+### Practical XDP skeleton demonstration
+To support the design discussion, I also built a very small XDP load-balancer skeleton.
+
+The practical prototype:
+- attaches as an XDP program to a real interface,
+- parses Ethernet, IPv4 and TCP/UDP headers,
+- matches a configured VIP and port,
+- selects a backend from a simple BPF map,
+- emits a userspace event describing the decision,
+- and currently returns `XDP_PASS`.
+
+This means the prototype demonstrates:
+- packet arrival at the NIC,
+- early XDP processing,
+- service matching,
+- backend selection,
+- and datapath decision making.
+
+### Practical implementation summary
+The Q5 prototype consists of:
+- `xdp_lb.bpf.c` — the kernel-side XDP program,
+- `xdp_lb.c` — the userspace loader,
+- `Makefile` — build logic for the skeleton.
+
+The prototype does the following:
+1. attaches to an interface as an XDP program,
+2. parses Ethernet + IPv4 + TCP/UDP,
+3. matches packets addressed to a configured VIP and port,
+4. looks up a backend from a simple backend map,
+5. emits a ring-buffer event to userspace,
+6. returns `XDP_PASS` or `XDP_DROP`.
+
+For safety and simplicity, this prototype does **not** yet:
+- rewrite packet headers,
+- update checksums,
+- or redirect traffic to the chosen backend.
+
+So it is a skeleton that demonstrates the essential datapath logic, not a full production load balancer.
+
+### Build
+The Q5 skeleton was built successfully with:
+
+```bash
+make
+```
+
+### Runtime configuration
+The prototype was attached to interface `enp3s0` and configured with:
+- VIP: `192.168.50.2`
+- port: `3000`
+- protocol: `tcp`
+- action: `pass`
+
+It was started with:
+
+```bash
+sudo ./xdp_lb enp3s0 192.168.50.2 3000 tcp pass
+```
+
+The loader reported:
+
+```text
+Attached XDP LB skeleton to enp3s0 (ifindex=2)
+VIP=192.168.50.2:3000 proto=tcp action=pass backends=[10.0.0.21:80, 10.0.0.22:80]
+Waiting for matching packets... Press Ctrl-C to stop.
+```
+
+### Practical test
+A request was made from another machine on the same network to the Q1 web server running on:
+
+```text
+http://192.168.50.2:3000/hello.txt
+```
+
+and also to:
+
+```text
+http://192.168.50.2:3000/
+```
+
+The browser on the laptop successfully displayed:
+- the `hello.txt` response,
+- and the main `index.html` page of the Q1 web server.
+
+At the same time, the XDP skeleton produced matching events such as:
+
+```text
+match proto=tcp src=192.168.50.1:53019 dst=192.168.50.2:3000 action=PASS backend_idx=0 backend=10.0.0.21:80
+```
+
+Additional repeated events were also observed for the same test connections.
+
+#### Screenshots from the practical test
+
+**`hello.txt` served over the network from the Q1 web server**
+
+![hello.txt served from the Q1 web server](q5_hello.png)
+
+**`index.html` served over the network from the Q1 web server**
+
+![index.html served from the Q1 web server](q5_index.png)
+
+
+### Interpretation of the practical result
+This output shows that the XDP program successfully:
+- attached to the real NIC receive path,
+- recognised packets addressed to the configured VIP and port,
+- parsed the TCP traffic correctly,
+- selected a backend from the backend map,
+- and produced a userspace-visible datapath decision.
+
+So even though the prototype does not yet perform header rewriting or redirection, it already demonstrates the key logical stages of an XDP-based load balancer.
+
+### Why this practical result is useful for Q5
+This practical prototype directly supports the design explanation in Question 5.
+
+The code demonstrates:
+- packet parsing at XDP level,
+- service matching by VIP/port,
+- backend selection from a map,
+- and a datapath decision at the earliest networking hook.
+
+This makes the Q5 discussion concrete rather than purely theoretical.
+
+### Limitations
+A production-grade XDP load balancer would require additional features such as:
+- real backend rewriting,
+- checksum updates,
+- redirect or transmit logic,
+- connection tracking,
+- return-path handling,
+- backend health checking,
+- neighbour/ARP handling,
+- and broader state management.
+
+Therefore this prototype should be understood as a minimal educational skeleton rather than a complete load balancer.
+
+### Conclusion
+eBPF provides the programmable execution model inside the Linux kernel, and XDP provides a very early and efficient hook for packet processing in the networking path.
+
+Cilium is an important real-world example of how eBPF and XDP are used in production for networking, service handling, observability and policy enforcement.
+
+In Question 4 I used eBPF for tracing and payload visibility.
+In Question 5 the same overall technology is used for datapath processing.
+
+The practical XDP skeleton built for this question successfully demonstrated:
+- real XDP attachment,
+- parsing of Ethernet/IP/TCP traffic,
+- matching against a configured service VIP and port,
+- backend selection from a map,
+- and a live datapath decision for traffic sent from another machine on the local network.
