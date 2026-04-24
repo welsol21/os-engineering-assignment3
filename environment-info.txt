@@ -1,0 +1,36 @@
+=== OS ===
+Distributor ID:	Ubuntu
+Description:	Ubuntu 22.04.5 LTS
+Release:	22.04
+Codename:	jammy
+
+=== Kernel ===
+Linux ML-desktop 6.8.0-110-generic #110~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Mar 27 12:43:08 UTC  x86_64 x86_64 x86_64 GNU/Linux
+
+=== GCC ===
+gcc (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+
+=== Clang ===
+Ubuntu clang version 14.0.0-1ubuntu1.1
+
+=== LD ===
+GNU ld (GNU Binutils for Ubuntu) 2.38
+
+=== Make ===
+GNU Make 4.3
+
+=== libbpf ===
+0.5.0
+
+=== LLVM ===
+14.0.0
+
+=== bpftool ===
+bpftool v7.4.0
+using libbpf v1.4
+features:
+
+=== Paths ===
+/usr/bin/gcc
+/usr/bin/clang
+/usr/sbin/bpftool
