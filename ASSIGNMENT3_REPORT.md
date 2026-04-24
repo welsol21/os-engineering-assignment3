@@ -436,3 +436,85 @@ A clean xv6 network design should be layered:
 
 This keeps device-specific logic in the driver, protocol logic in the network stack, and user-facing semantics in the socket layer.
 It also fits xv6’s general design philosophy of hiding low-level hardware details behind simple Unix-like abstractions.
+
+
+## Question 4 - eBPF for networking
+
+### Requirement
+Question 4 required an eBPF program that dumps a portion of a received TCP packet just before the data is read from user space.
+The assignment also stated that the tool should be based on the style of `libbpf-tools` TCP tracing tools.
+
+### Implementation
+For this question I implemented a small `libbpf`-style tracing tool with two parts:
+
+- a kernel-side eBPF program in `tcpdump_portion.bpf.c`,
+- a user-space loader in `tcpdump_portion.c`.
+
+The user-space loader opens the BPF object, loads it, attaches the probes, creates a ring buffer, and prints events received from the kernel.
+
+The eBPF program traces the receive path by attaching to syscall tracepoints for `recvfrom`.
+On syscall entry, it stores:
+- the user buffer pointer,
+- the requested receive length,
+- the current process context.
+
+On syscall exit, it:
+- checks the returned length,
+- copies the first bytes from the user buffer using `bpf_probe_read_user`,
+- submits an event through a ring buffer to user space.
+
+The event structure contains:
+- process ID,
+- process name,
+- returned length,
+- the first 64 bytes of data.
+
+### Filtering
+To keep the output focused on the assignment test traffic, I filtered events so that only the `curl` process was traced.
+
+### Build
+The Q4 tool was built successfully using the local `Makefile`, `clang`, `bpftool`, and `libbpf`.
+
+### Runtime test
+The tool was started with:
+
+```bash
+sudo ./tcpdump_portion
+```
+
+Then TCP traffic was generated with:
+
+```bash
+curl http://localhost:3000/hello.txt
+```
+
+The running tool produced the following output:
+
+```text
+Tracing recvfrom payload... Press Ctrl-C to stop.
+pid=349403 comm=curl len=68 data_hex=48 54 54 50 2f 31 2e 30 20 32 30 30 20 4f 4b 0d 0a 43 6f 6e 74 65 6e 74 2d 4c 65 6e 67 74 68 3a 20 32 39 0d 0a 0d 0a 48 65 6c 6c 6f 20 66 72 6f 6d 20 74 68 65 20 51 31 20 77 65 62 20 73 65 72
+```
+
+### Interpretation of the captured payload
+The dumped bytes are the beginning of the HTTP response returned by the Q1 web server.
+The hexadecimal values decode to the prefix:
+
+```text
+HTTP/1.0 200 OK
+Content-Length: 29
+
+Hello from the Q1 web ser
+```
+
+This shows that the tool successfully captured a real portion of the TCP payload that was read by user space.
+
+### Result
+This Q4 implementation achieved the main practical goal:
+- it successfully loaded and attached an eBPF tracing program,
+- it captured receive-path activity for TCP user-space reads,
+- it copied and displayed the first bytes of the received payload,
+- and it demonstrated a working `libbpf`-style tracing workflow in Linux.
+
+### Limitation
+The implementation traces the user-space receive syscall path rather than attaching directly to `tcp_recvmsg` with a fully CO-RE-based design.
+However, it still satisfies the practical purpose of the question by dumping part of the received TCP data read by user space.
